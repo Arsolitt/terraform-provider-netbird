@@ -8,3 +8,8 @@ resource "netbird_group" "example" {
     data.netbird_peer.example.id,
   ]
 }
+
+resource "netbird_group" "jwt_backed" {
+  name   = "admins"
+  issued = "jwt"
+}

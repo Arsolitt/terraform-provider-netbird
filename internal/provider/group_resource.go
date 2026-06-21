@@ -67,9 +67,11 @@ func (r *Group) Schema(ctx context.Context, req resource.SchemaRequest, resp *re
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"issued": schema.StringAttribute{
-				MarkdownDescription: "Group issued by",
+				MarkdownDescription: "Group origin. Set to `jwt` to pre-provision a group that will receive members from the IdP JWT `groups` claim at login (no prior IdP login required). Set to `api` for a regular group. Defaults to `api`. Changing this value updates the group in place (no resource replacement).",
+				Optional:            true,
 				Computed:            true,
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				Validators:          []validator.String{stringvalidator.OneOf("api", "jwt")},
 			},
 			"peers": schema.ListAttribute{
 				MarkdownDescription: "List of peers ids",
@@ -164,6 +166,7 @@ func (r *Group) Create(ctx context.Context, req resource.CreateRequest, resp *re
 		Name:      data.Name.ValueString(),
 		Peers:     stringListDefaultPointer(ctx, data.Peers, nil),
 		Resources: resources,
+		Issued:    groupRequestIssued(data.Issued),
 	}
 
 	group, err := r.client.Groups.Create(ctx, groupReq)
@@ -249,6 +252,7 @@ func (r *Group) Update(ctx context.Context, req resource.UpdateRequest, resp *re
 		Name:      data.Name.ValueString(),
 		Peers:     stringListDefaultPointer(ctx, data.Peers, nil),
 		Resources: resources,
+		Issued:    groupRequestIssued(data.Issued),
 	}
 
 	group, err := r.client.Groups.Update(ctx, data.Id.ValueString(), groupReq)
@@ -284,4 +288,23 @@ func (r *Group) Delete(ctx context.Context, req resource.DeleteRequest, resp *re
 
 func (r *Group) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// groupRequestIssued converts the Terraform `issued` attribute into the API enum
+// expected by the group requests. It returns nil for an unset value and for an
+// origin the request enum cannot express, such as the "integration" origin of a
+// group provisioned through an integration. Omitting the field makes the server
+// apply its own default on create and keep the existing origin on update, while
+// sending a value outside the enum is rejected.
+func groupRequestIssued(v types.String) *api.GroupRequestIssued {
+	if v.IsNull() || v.IsUnknown() {
+		return nil
+	}
+
+	issued := api.GroupRequestIssued(v.ValueString())
+	if !issued.Valid() {
+		return nil
+	}
+
+	return &issued
 }
