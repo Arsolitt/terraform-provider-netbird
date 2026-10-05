@@ -235,12 +235,16 @@ resource "netbird_user" "%[1]s" {
 			address: "netbird_agent_network_provider." + n,
 			id:      "nosuchprovider",
 			want:    gone,
+			// skip_tls_verification: netbird #7301 refuses to save a provider
+			// whose throwaway key the vendor rejects; an import step never
+			// applies this config, but the fixture stays uniform.
 			config: fmt.Sprintf(`
 resource "netbird_agent_network_provider" "%[1]s" {
-  provider_id  = "%[1]s"
-  name         = "%[1]s"
-  upstream_url = "https://example.invalid"
-  api_key      = "k"
+  provider_id           = "%[1]s"
+  name                  = "%[1]s"
+  upstream_url          = "https://example.invalid"
+  api_key               = "k"
+  skip_tls_verification = true
 }`, n),
 		},
 		{

@@ -89,13 +89,7 @@ jobs:
       - env:
           TF_ACC: "1"
           NB_E2E_BUILDX_CACHE: /tmp/nb-buildx-cache
-        # Test_AgentNetwork is skipped: netbird #7301 (2026-09-02) validates an
-        # agent-network provider's URL and credential against the live API when
-        # the object is saved, and these tests configure the throwaway key
-        # "sk-acc-test". Upstream's go.mod still pins a revision from before that
-        # check, so the suite is green there and red here until a real key is
-        # wired in or the harness gains a way around the validation.
-        run: go test -v -tags e2e -timeout 35m -cover -coverprofile=coverage.out -skip 'Test_AgentNetwork' ./internal/provider/
+        run: go test -v -tags e2e -timeout 35m -cover -coverprofile=coverage.out ./internal/provider/
         # Above the 35m the go test timeout allows, because that timeout only
         # starts once the tests are running: compiling the package and building
         # the images happen inside this step but outside it. Killing the step
