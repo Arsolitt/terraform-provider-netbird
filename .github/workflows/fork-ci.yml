@@ -48,9 +48,8 @@ jobs:
   # validates still fails on the tag if a GOOS/GOARCH pair does not compile, and
   # the answer costs a runner minute here.
   #
-  # Signing is skipped, so this job needs no GPG secrets. Publishing is skipped by
-  # --snapshot, which also implies skipping the release validations: the build
-  # has to work on an uncommitted tree.
+  # Publishing is skipped by --snapshot, which also implies skipping the release
+  # validations: the build has to work on an uncommitted tree.
   snapshot:
     name: Snapshot build
     runs-on: ubuntu-latest
@@ -70,4 +69,4 @@ jobs:
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: ${{ env.GORELEASER_VERSION }}
-          args: release --snapshot --clean --skip=sign --config .goreleaser.fork.yaml
+          args: release --snapshot --clean --config .goreleaser.fork.yaml

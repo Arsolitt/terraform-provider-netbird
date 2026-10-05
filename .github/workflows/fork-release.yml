@@ -5,8 +5,8 @@
 #   vX.Y.Z-rc.N  -> GitHub pre-release, latest left alone
 #
 # Assets: terraform-provider-netbird_<version>_<os>_<arch>.zip per platform, the
-# terraform-provider-netbird_<version>_SHA256SUMS checksum file with its detached
-# .sig, and terraform-provider-netbird_<version>_manifest.json. Cut the tag from
+# terraform-provider-netbird_<version>_SHA256SUMS checksum file, and the
+# terraform-provider-netbird_<version>_manifest.json. Cut the tag from
 # a commit whose go.mod resolves netbird from the fork's published tag, never
 # from a local path replace.
 #
@@ -20,11 +20,16 @@
 # package has to be public, or readable with a token: GHCR creates it private.
 #
 #   # ~/.tofurc -- modules that keep source = "netbirdio/netbird" unchanged are
-#   # resolved from the fork's mirror instead of registry.opentofu.org:
+#   # resolved from the fork's mirror instead of registry.opentofu.org. Without
+#   # the matching direct exclude the origin registry stays in play for that
+#   # provider; every other provider still installs directly.
 #   provider_installation {
 #     oci_mirror {
 #       repository_template = "ghcr.io/arsolitt/terraform-provider-netbird"
 #       include             = ["registry.opentofu.org/netbirdio/netbird"]
+#     }
+#     direct {
+#       exclude             = ["registry.opentofu.org/netbirdio/netbird"]
 #     }
 #   }
 #
@@ -34,9 +39,15 @@
 #       repository_template = "ghcr.io/arsolitt/terraform-provider-netbird"
 #       include             = ["registry.opentofu.org/arsolitt/netbird"]
 #     }
+#     direct {
+#       exclude             = ["registry.opentofu.org/arsolitt/netbird"]
+#     }
 #   }
 #
-#   # ~/.tofurc -- while the package is private, a token that can read it:
+#   # A prerelease is only selected by a constraint that names it, e.g.
+#   #   version = "0.0.11-rc.1"
+#   # and GHCR creates the package private; until it is flipped public, reads
+#   # need a token that can see it:
 #   oci_credentials "ghcr.io" {
 #     username = "<github username>"
 #     password = "<PAT with read:packages>"
@@ -71,12 +82,6 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
-      - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7.0.0
-        id: import_gpg
-        with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.PASSPHRASE }}
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
@@ -85,7 +90,6 @@ jobs:
         env:
           # GitHub sets the GITHUB_TOKEN secret automatically.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
           # A commit can carry several tags, and goreleaser then resolves the
           # wrong one and re-uploads into an existing release. Pin the version to
           # the tag that triggered this run.

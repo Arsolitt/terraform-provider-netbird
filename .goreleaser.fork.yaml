@@ -3,8 +3,9 @@
 # Upstream's .goreleaser.yml stays untouched so rebases stay trivial; this config
 # is the fork's own release pipeline. The artifact names below are the contract
 # the Terraform and OpenTofu registries install from, so they may not change:
-# one zip per platform, the checksum file with its detached signature, and the
-# registry manifest.
+# one zip per platform, the checksum file, and the registry manifest. The
+# checksum file is not signed: the fork's releases are consumed through the GHCR
+# OCI mirror, whose integrity check is the digest, not a registered GPG key.
 #
 # Tag convention: vX.Y.Z for stable releases, vX.Y.Z-rc.N for prereleases.
 # `prerelease: auto` reads the -rc.N suffix, and only a stable tag moves the
@@ -18,15 +19,10 @@
 # ../netbird to resolve, so a tag cut while that replace is in place fails in the
 # build step.
 #
-# Required repository secrets:
-#   GPG_PRIVATE_KEY  ASCII-armored private key whose public half the registries
-#                    verify the SHA256SUMS signature against.
-#   PASSPHRASE       passphrase of that key.
-#
 # Release:    git tag -s vX.Y.Z[-rc.N] -m "..." && git push origin vX.Y.Z[-rc.N]
 # Local check: goreleaser check --config .goreleaser.fork.yaml
 # Local dry run, builds everything and publishes nothing, needs no secrets:
-#              goreleaser release --snapshot --clean --skip=sign \
+#              goreleaser release --snapshot --clean \
 #                  --config .goreleaser.fork.yaml
 version: 2
 
@@ -79,19 +75,6 @@ checksum:
   extra_files:
     - glob: terraform-registry-manifest.json
       name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
-
-signs:
-  - artifacts: checksum
-    args:
-      # --batch keeps gpg from trying to prompt: the runner has no tty, and the
-      # passphrase comes from the imported key's own agent setup.
-      - "--batch"
-      - "--local-user"
-      - "{{ .Env.GPG_FINGERPRINT }}"
-      - "--output"
-      - "${signature}"
-      - "--detach-sign"
-      - "${artifact}"
 
 release:
   prerelease: auto
