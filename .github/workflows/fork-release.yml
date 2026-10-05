@@ -16,8 +16,14 @@
 # The `oci` job republishes those same zips to
 # ghcr.io/arsolitt/terraform-provider-netbird, tagged with the version without
 # its leading v, in the layout OpenTofu's oci_mirror installation method reads.
-# Consumers need OpenTofu >= 1.10 (where that method landed) and the GHCR
-# package has to be public, or readable with a token: GHCR creates it private.
+# Consumers need OpenTofu >= 1.10 (where that method landed).
+#
+# GHCR requires credentials even for a public package: its /v2/ challenge
+# advertises the placeholder scope repository:user/image:pull, and the anonymous
+# token request for that scope is denied with 403, so the client must
+# authenticate before it can reach the repository. Any GitHub token works while
+# the package is public; a token with read:packages is needed only if the
+# package is private.
 #
 #   # ~/.tofurc -- modules that keep source = "netbirdio/netbird" unchanged are
 #   # resolved from the fork's mirror instead of registry.opentofu.org. Without
@@ -46,11 +52,10 @@
 #
 #   # A prerelease is only selected by a constraint that names it, e.g.
 #   #   version = "0.0.11-rc.1"
-#   # and GHCR creates the package private; until it is flipped public, reads
-#   # need a token that can see it:
+#   # Required with GHCR (see the note above):
 #   oci_credentials "ghcr.io" {
 #     username = "<github username>"
-#     password = "<PAT with read:packages>"
+#     password = "<github token>"
 #   }
 name: Fork Release
 
