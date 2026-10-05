@@ -1,0 +1,101 @@
+# GoReleaser configuration for the Arsolitt terraform-provider-netbird fork.
+#
+# Upstream's .goreleaser.yml stays untouched so rebases stay trivial; this config
+# is the fork's own release pipeline. The artifact names below are the contract
+# the Terraform and OpenTofu registries install from, so they may not change:
+# one zip per platform, the checksum file with its detached signature, and the
+# registry manifest.
+#
+# Tag convention: vX.Y.Z for stable releases, vX.Y.Z-rc.N for prereleases.
+# `prerelease: auto` reads the -rc.N suffix, and only a stable tag moves the
+# repository's "latest" pointer.
+#
+# Cut a release from a commit whose go.mod resolves netbird from the fork's
+# published tag, never from a local path replace: a GitHub runner has no
+# ../netbird to resolve, so a tag cut while that replace is in place fails in the
+# build step.
+#
+# Required repository secrets:
+#   GPG_PRIVATE_KEY  ASCII-armored private key whose public half the registries
+#                    verify the SHA256SUMS signature against.
+#   PASSPHRASE       passphrase of that key.
+#
+# Release:    git tag -s vX.Y.Z[-rc.N] -m "..." && git push origin vX.Y.Z[-rc.N]
+# Local check: goreleaser check --config .goreleaser.fork.yaml
+# Local dry run, builds everything and publishes nothing, needs no secrets:
+#              goreleaser release --snapshot --clean --skip=sign \
+#                  --config .goreleaser.fork.yaml
+version: 2
+
+# Pinned: goreleaser otherwise derives the project name from the checkout
+# directory, and a worktree or a CI temp path would end up in every asset name
+# the registries parse.
+project_name: terraform-provider-netbird
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      # The provider is a pure-Go plugin, and CGO would rule out the platforms
+      # below: a registry installs a prebuilt binary on machines that have no C
+      # toolchain at all.
+      - CGO_ENABLED=0
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }}
+    goos:
+      - freebsd
+      - windows
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - "386"
+      - arm
+      - arm64
+    ignore:
+      - goos: darwin
+        goarch: "386"
+    # Terraform looks for this name inside the zip, so it carries the v-prefixed
+    # version while the asset name does not.
+    binary: "{{ .ProjectName }}_v{{ .Version }}"
+
+archives:
+  - formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
+  algorithm: sha256
+  # The registry manifest ships as a release asset, which a checksum entry in
+  # the sums file is what keeps verifiable.
+  extra_files:
+    - glob: terraform-registry-manifest.json
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
+
+signs:
+  - artifacts: checksum
+    args:
+      # --batch keeps gpg from trying to prompt: the runner has no tty, and the
+      # passphrase comes from the imported key's own agent setup.
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+
+release:
+  prerelease: auto
+  make_latest: "{{ not .Prerelease }}"
+  extra_files:
+    - glob: terraform-registry-manifest.json
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
+
+changelog:
+  disable: true

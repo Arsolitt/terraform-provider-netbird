@@ -1,0 +1,73 @@
+# Gates for the fork release pipeline: the GoReleaser config has to validate, and
+# every platform the release publishes has to build. Both run without secrets, so
+# a pull request that breaks the release surfaces here rather than on the tag.
+#
+# The tag-triggered release itself lives in fork-release.yml.
+name: Fork CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GORELEASER_VERSION: v2.18.1
+
+jobs:
+  config:
+    name: GoReleaser config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Nothing here pushes, so the checkout token has no business
+          # outliving the step that fetched with it.
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Validate the fork release config
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: ${{ env.GORELEASER_VERSION }}
+          args: check --config .goreleaser.fork.yaml
+
+  # The build itself, on every platform the release archives: a config that
+  # validates still fails on the tag if a GOOS/GOARCH pair does not compile, and
+  # the answer costs a runner minute here.
+  #
+  # Signing is skipped, so this job needs no GPG secrets. Publishing is skipped by
+  # --snapshot, which also implies skipping the release validations: the build
+  # has to work on an uncommitted tree.
+  snapshot:
+    name: Snapshot build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history and tags: the snapshot version is derived from the latest
+          # tag, and a shallow clone does not reliably carry it.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Build the release artifacts
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --snapshot --clean --skip=sign --config .goreleaser.fork.yaml
