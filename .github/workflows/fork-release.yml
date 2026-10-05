@@ -12,6 +12,35 @@
 #
 # This replaces upstream's release.yml, which was deleted: it triggered on the
 # same v* tags and would race this workflow for the same release.
+#
+# The `oci` job republishes those same zips to
+# ghcr.io/arsolitt/terraform-provider-netbird, tagged with the version without
+# its leading v, in the layout OpenTofu's oci_mirror installation method reads.
+# Consumers need OpenTofu >= 1.10 (where that method landed) and the GHCR
+# package has to be public, or readable with a token: GHCR creates it private.
+#
+#   # ~/.tofurc -- modules that keep source = "netbirdio/netbird" unchanged are
+#   # resolved from the fork's mirror instead of registry.opentofu.org:
+#   provider_installation {
+#     oci_mirror {
+#       repository_template = "ghcr.io/arsolitt/terraform-provider-netbird"
+#       include             = ["registry.opentofu.org/netbirdio/netbird"]
+#     }
+#   }
+#
+#   # ~/.tofurc -- address the fork explicitly, source = "arsolitt/netbird":
+#   provider_installation {
+#     oci_mirror {
+#       repository_template = "ghcr.io/arsolitt/terraform-provider-netbird"
+#       include             = ["registry.opentofu.org/arsolitt/netbird"]
+#     }
+#   }
+#
+#   # ~/.tofurc -- while the package is private, a token that can read it:
+#   oci_credentials "ghcr.io" {
+#     username = "<github username>"
+#     password = "<PAT with read:packages>"
+#   }
 name: Fork Release
 
 on:
@@ -61,3 +90,98 @@ jobs:
           # wrong one and re-uploads into an existing release. Pin the version to
           # the tag that triggered this run.
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+
+  # Publishes the release's platform packages to GHCR as the OCI artifact
+  # OpenTofu's oci_mirror installation method reads; see this file's header for
+  # the consumer side. It runs after the release exists rather than off the
+  # goreleaser step's artifacts, because the release's assets are what the
+  # registries' checksums describe and what consumers download by hand.
+  oci:
+    name: Publish OCI mirror
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # download the release's assets
+      packages: write # create the ghcr.io package and its tags
+    env:
+      # The repository the mirror lives in: the fork's own name, not the
+      # provider address, because the releases published here are the fork's.
+      OCI_REPOSITORY: ghcr.io/arsolitt/terraform-provider-netbird
+      # v1.3.0 is the first oras with --artifact-platform, and 1.3.4 is the
+      # latest of that line. The checksum is the one the release publishes in
+      # oras_${ORAS_VERSION}_checksums.txt; a version bump needs a new one.
+      ORAS_VERSION: 1.3.4
+    steps:
+      - name: Install ORAS
+        env:
+          # Pinned to the bytes as well as the version: this downloads and runs
+          # a binary, so the tag alone would let a replaced asset through.
+          ORAS_LINUX_AMD64_SHA256: f27adb935022d94df8dc77719c322dda592c78a0d57a6f7dcdd8d900b248c454
+        run: |
+          curl -fsSLo /tmp/oras.tar.gz \
+            "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz"
+          echo "${ORAS_LINUX_AMD64_SHA256}  /tmp/oras.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/oras.tar.gz -C /usr/local/bin oras
+          oras version
+      - name: Download the release's platform packages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p packages
+          gh release download "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern 'terraform-provider-netbird_*.zip' \
+            --dir packages
+          ls -1 packages
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "${GHCR_TOKEN}" | oras login ghcr.io \
+            --username "${{ github.actor }}" --password-stdin
+      - name: Assemble the layout and push it
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          shopt -s nullglob
+          zips=(packages/*.zip)
+          if (( ${#zips[@]} == 0 )); then
+            echo "the release carries no platform packages to publish" >&2
+            exit 1
+          fi
+
+          # --artifact-platform takes the os/arch the package was built for, and
+          # both it and the os_arch tag exist only in the asset name, so a name
+          # that does not parse is fatal: publishing a package with the wrong
+          # platform silently makes it useless to that platform's consumers.
+          platforms=()
+          for zip in "${zips[@]}"; do
+            name="$(basename "${zip}")"
+            prefix="terraform-provider-netbird_${version}_"
+            if [[ "${name}" != "${prefix}"*.zip ]]; then
+              echo "release asset does not match ${prefix}<os>_<arch>.zip: ${name}" >&2
+              exit 1
+            fi
+            platform="${name#"${prefix}"}"
+            platform="${platform%.zip}"
+            if [[ ! "${platform}" =~ ^[a-z0-9]+_[a-z0-9]+$ ]]; then
+              echo "cannot derive os_arch from release asset: ${name}" >&2
+              exit 1
+            fi
+            oras push \
+              --artifact-type application/vnd.opentofu.provider-target \
+              --artifact-platform "${platform%_*}/${platform#*_}" \
+              --oci-layout "tmp-layout:${platform}" \
+              "${zip}:archive/zip"
+            platforms+=("${platform}")
+          done
+
+          oras manifest index create \
+            --artifact-type=application/vnd.opentofu.provider \
+            --oci-layout "tmp-layout:${version}" \
+            "${platforms[@]}"
+
+          oras cp \
+            --from-oci-layout "tmp-layout:${version}" \
+            "${OCI_REPOSITORY}:${version}"

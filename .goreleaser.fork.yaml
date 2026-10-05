@@ -10,6 +10,9 @@
 # `prerelease: auto` reads the -rc.N suffix, and only a stable tag moves the
 # repository's "latest" pointer.
 #
+# The same tag also republishes these zips to GHCR as an OpenTofu oci_mirror
+# (fork-release.yml's second job); that file's header has the consumer setup.
+#
 # Cut a release from a commit whose go.mod resolves netbird from the fork's
 # published tag, never from a local path replace: a GitHub runner has no
 # ../netbird to resolve, so a tag cut while that replace is in place fails in the
