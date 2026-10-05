@@ -1,0 +1,63 @@
+# Tag driven release of the fork's provider, in the layout the Terraform and
+# OpenTofu registries install from:
+#
+#   vX.Y.Z       -> GitHub release marked Latest
+#   vX.Y.Z-rc.N  -> GitHub pre-release, latest left alone
+#
+# Assets: terraform-provider-netbird_<version>_<os>_<arch>.zip per platform, the
+# terraform-provider-netbird_<version>_SHA256SUMS checksum file with its detached
+# .sig, and terraform-provider-netbird_<version>_manifest.json. Cut the tag from
+# a commit whose go.mod resolves netbird from the fork's published tag, never
+# from a local path replace.
+#
+# This replaces upstream's release.yml, which was deleted: it triggered on the
+# same v* tags and would race this workflow for the same release.
+name: Fork Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  GORELEASER_VERSION: v2.18.1
+
+jobs:
+  goreleaser:
+    name: Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # create the release and upload its assets
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history and tags: goreleaser derives the version from the tag.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7.0.0
+        id: import_gpg
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --clean --config .goreleaser.fork.yaml
+        env:
+          # GitHub sets the GITHUB_TOKEN secret automatically.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+          # A commit can carry several tags, and goreleaser then resolves the
+          # wrong one and re-uploads into an existing release. Pin the version to
+          # the tag that triggered this run.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
