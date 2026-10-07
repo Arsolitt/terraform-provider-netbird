@@ -141,6 +141,12 @@ func (r *Policy) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 		MarkdownDescription: "Create and Manage Policies, See [NetBird Docs](https://docs.netbird.io/how-to/manage-network-access#policies) for more information.",
 
 		Blocks: map[string]schema.Block{
+			// One rule per policy, because that is all the management API keeps:
+			// it assigns every rule it creates the policy's own ID while the rule
+			// ID is the primary key, so a second rule overwrites the first and the
+			// response still echoes both. Relaxing this would let a configuration
+			// lose rules without an error, so the block stays single until the API
+			// can persist several.
 			"rule": schema.ListNestedBlock{
 				Validators: []validator.List{listvalidator.SizeBetween(1, 1)},
 				NestedObject: schema.NestedBlockObject{
