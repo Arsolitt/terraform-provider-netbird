@@ -54,10 +54,21 @@ func (d *GroupDataSource) Schema(ctx context.Context, req datasource.SchemaReque
 				ElementType:         types.StringType,
 				Computed:            true,
 			},
-			"resources": schema.ListAttribute{
-				MarkdownDescription: "List of network resource ids",
-				ElementType:         types.StringType,
+			"resources": schema.ListNestedAttribute{
+				MarkdownDescription: "List of network resources attached to the group. Each entry pairs a resource `id` with its `type`: `peer`, `domain`, `host`, or `subnet`.",
 				Computed:            true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"id": schema.StringAttribute{
+							MarkdownDescription: "Resource ID",
+							Computed:            true,
+						},
+						"type": schema.StringAttribute{
+							MarkdownDescription: "Resource type",
+							Computed:            true,
+						},
+					},
+				},
 			}},
 	}
 }

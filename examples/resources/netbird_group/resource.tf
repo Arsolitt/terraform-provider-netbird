@@ -13,3 +13,17 @@ resource "netbird_group" "jwt_backed" {
   name   = "admins"
   issued = "jwt"
 }
+
+resource "netbird_group" "with_resources" {
+  name = "Resource Test"
+  resources = [
+    {
+      id   = data.netbird_peer.example.id
+      type = "peer"
+    },
+    {
+      id   = "some-subnet-id"
+      type = "subnet"
+    },
+  ]
+}

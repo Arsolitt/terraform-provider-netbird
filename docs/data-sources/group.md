@@ -43,4 +43,12 @@ data "netbird_group" "example_c" {
 
 - `issued` (String) Group issued by
 - `peers` (List of String) List of peers ids
-- `resources` (List of String) List of network resource ids
+- `resources` (Attributes List) List of network resources attached to the group. Each entry pairs a resource `id` with its `type`: `peer`, `domain`, `host`, or `subnet`. (see [below for nested schema](#nestedatt--resources))
+
+<a id="nestedatt--resources"></a>
+### Nested Schema for `resources`
+
+Read-Only:
+
+- `id` (String) Resource ID
+- `type` (String) Resource type
