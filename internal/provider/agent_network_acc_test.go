@@ -109,14 +109,21 @@ func testGetProvider(id string) (*api.AgentNetworkProvider, error) {
 	return testAgentNetworkClient().GetProvider(context.Background(), id)
 }
 
+// The provider records here set skip_tls_verification, because netbird #7301
+// checks an agent-network provider's upstream URL and credential against the
+// vendor's model listing whenever the record is saved. These tests use a
+// throwaway key, so without the flag every save is refused; the flag is the
+// server's documented escape hatch for an endpoint whose TLS setup the check
+// cannot speak for.
 func testAgentNetworkProviderResource(rName, name, extraValues, metadataDisabled string) string {
 	return fmt.Sprintf(`resource "netbird_agent_network_provider" "%s" {
-	provider_id       = "openai_api"
-	name              = "%s"
-	upstream_url      = "https://api.openai.com"
-	api_key           = "sk-acc-test"
-	extra_values      = %s
-	metadata_disabled = %s
+	provider_id           = "openai_api"
+	name                  = "%s"
+	upstream_url          = "https://api.openai.com"
+	api_key               = "sk-acc-test"
+	extra_values          = %s
+	metadata_disabled     = %s
+	skip_tls_verification = true
 }`, rName, name, extraValues, metadataDisabled)
 }
 
@@ -260,11 +267,15 @@ func Test_AgentNetworkProvider_ProviderIdUpdatesInPlace(t *testing.T) {
 	var createdID string
 
 	config := func(providerID, upstream string) string {
+		// skip_tls_verification: netbird #7301 refuses to save a provider
+		// whose throwaway key the vendor rejects, and the flag is the escape
+		// hatch the server documents for exactly that check.
 		return fmt.Sprintf(`resource "netbird_agent_network_provider" "%s" {
-	provider_id       = "%s"
-	name              = "%s"
-	upstream_url      = "%s"
-	api_key           = "sk-acc-test"
+	provider_id           = "%s"
+	name                  = "%s"
+	upstream_url          = "%s"
+	api_key               = "sk-acc-test"
+	skip_tls_verification = true
 }`, rName, providerID, rName, upstream)
 	}
 
@@ -359,16 +370,20 @@ func Test_AgentNetworkPolicy_Create(t *testing.T) {
 	rNameFull := "netbird_agent_network_policy." + rName
 	var createdID string
 
+	// skip_tls_verification: netbird #7301 refuses to save a provider whose
+	// throwaway key the vendor rejects, and the flag is the escape hatch the
+	// server documents for exactly that check.
 	config := fmt.Sprintf(`
 resource "netbird_group" "%[1]s" {
 	name = "%[1]s-group"
 }
 
 resource "netbird_agent_network_provider" "%[1]s" {
-	provider_id       = "openai_api"
-	name              = "%[1]s-provider"
-	upstream_url      = "https://api.openai.com"
-	api_key           = "sk-acc-test"
+	provider_id           = "openai_api"
+	name                  = "%[1]s-provider"
+	upstream_url          = "https://api.openai.com"
+	api_key               = "sk-acc-test"
+	skip_tls_verification = true
 }
 
 resource "netbird_agent_network_guardrail" "%[1]s" {
@@ -496,17 +511,22 @@ func Test_AgentNetworkSettings_AdoptsExistingValues(t *testing.T) {
 	// The provider depends on the settings, not the other way round: the server
 	// refuses to release a gateway while providers still route through it, so the
 	// gateway has to be created first and destroyed last.
+	//
+	// skip_tls_verification: netbird #7301 refuses to save a provider whose
+	// throwaway key the vendor rejects, and the flag is the escape hatch the
+	// server documents for exactly that check.
 	config := fmt.Sprintf(`
 resource "netbird_agent_network_settings" "%[1]s" {
 	access_log_retention_days = 45
 }
 
 resource "netbird_agent_network_provider" "%[1]s" {
-	provider_id       = "openai_api"
-	name              = "%[1]s-provider"
-	upstream_url      = "https://api.openai.com"
-	api_key           = "sk-acc-test"
-	depends_on        = [netbird_agent_network_settings.%[1]s]
+	provider_id           = "openai_api"
+	name                  = "%[1]s-provider"
+	upstream_url          = "https://api.openai.com"
+	api_key               = "sk-acc-test"
+	skip_tls_verification = true
+	depends_on            = [netbird_agent_network_settings.%[1]s]
 }`, rName)
 
 	resource.Test(t, resource.TestCase{

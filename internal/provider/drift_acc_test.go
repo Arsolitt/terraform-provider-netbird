@@ -481,6 +481,10 @@ func Test_Drift_AgentNetworkProvider(t *testing.T) {
 				api.AgentNetworkProviderRequest{
 					ProviderId: "openai_api", Name: rName + "-changed-elsewhere",
 					UpstreamUrl: "https://api.openai.com", MetadataDisabled: &on,
+					// Omitted, this would land as false and trip netbird
+					// #7301's credential check on the throwaway key, so the
+					// update carries the value the fixture was created with.
+					SkipTlsVerification: &on,
 				})
 			return err
 		},
