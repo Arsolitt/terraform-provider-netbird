@@ -677,11 +677,11 @@ func testCheckAbsentFromList[T any](list func(context.Context) ([]T, error), id 
 
 // testImportIDFrom builds a composite import ID out of attributes in state, for
 // the resources whose ImportState expects more than the object's own ID — a
-// network resource is addressed as network_id/id, a token as user_id/id.
-//
-// The separator is a parameter because the provider is not consistent about it:
-// dns_record splits on ":" while the others split on "/".
-func testImportIDFrom(resourceName, sep string, attrs ...string) resource.ImportStateIdFunc {
+// network resource is addressed as network_id/id, a token as user_id/id. The
+// separator is "/" for every such importer; dns_record is the one composite-ID
+// importer that differs (":"), and it builds its own ID in
+// testDNSRecordImportStateIdFunc.
+func testImportIDFrom(resourceName string, attrs ...string) resource.ImportStateIdFunc {
 	return func(s *terraform.State) (string, error) {
 		rs, ok := s.RootModule().Resources[resourceName]
 		if !ok {
@@ -695,7 +695,7 @@ func testImportIDFrom(resourceName, sep string, attrs ...string) resource.Import
 			}
 			parts = append(parts, v)
 		}
-		return strings.Join(parts, sep), nil
+		return strings.Join(parts, "/"), nil
 	}
 }
 

@@ -31,7 +31,26 @@ func Test_networkResourceAPIToTerraform(t *testing.T) {
 				Description: types.StringNull(),
 				Address:     types.StringValue("1.1.1.1/32"),
 				Enabled:     types.BoolValue(false),
-				Groups:      types.SetValueMust(types.StringType, []attr.Value{}),
+				Groups:      types.SetNull(types.StringType),
+			},
+		},
+		{
+			resource: &api.NetworkResource{
+				Address:     "10.0.0.0/24",
+				Description: nil,
+				Enabled:     true,
+				Groups:      nil,
+				Id:          "r3",
+				Name:        "test3",
+				Type:        api.NetworkResourceTypeSubnet,
+			},
+			expected: NetworkResourceModel{
+				Id:          types.StringValue("r3"),
+				Name:        types.StringValue("test3"),
+				Description: types.StringNull(),
+				Address:     types.StringValue("10.0.0.0/24"),
+				Enabled:     types.BoolValue(true),
+				Groups:      types.SetNull(types.StringType),
 			},
 		},
 		{
