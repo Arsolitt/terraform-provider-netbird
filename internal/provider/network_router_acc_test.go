@@ -56,7 +56,7 @@ func Test_NetworkRouter_Create(t *testing.T) {
 				ResourceName:      rNameFull,
 				ImportState:       true,
 				ImportStateVerify: true,
-				ImportStateIdFunc: testImportIDFrom(rNameFull, "/", "network_id", "id"),
+				ImportStateIdFunc: testImportIDFrom(rNameFull, "network_id", "id"),
 			},
 		},
 	})

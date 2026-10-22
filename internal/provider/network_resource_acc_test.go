@@ -62,7 +62,7 @@ func Test_NetworkResource_Create(t *testing.T) {
 				ResourceName:      rNameFull,
 				ImportState:       true,
 				ImportStateVerify: true,
-				ImportStateIdFunc: testImportIDFrom(rNameFull, "/", "network_id", "id"),
+				ImportStateIdFunc: testImportIDFrom(rNameFull, "network_id", "id"),
 			},
 		},
 	})
@@ -120,6 +120,77 @@ func Test_NetworkResource_Update(t *testing.T) {
 			},
 		},
 	})
+}
+
+func Test_NetworkResource_NoGroups(t *testing.T) {
+	testE2E(t)
+	rName := "nre" + acctest.RandStringFromCharSet(10, acctest.CharSetAlpha)
+	rNameFull := "netbird_network_resource." + rName
+	var createdID string
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testEnsureManagementRunning(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy: testCheckGone(func(ctx context.Context, id string) (*api.NetworkResource, error) {
+			return testClient().Networks.Resources(e2eNetworkID()).Get(ctx, id)
+		}, &createdID),
+		Steps: []resource.TestStep{
+			{
+				ResourceName: rName,
+				Config:       testNetworkResourceResourceNoGroups(rName, e2eNetworkID(), `10.90.0.0/24`, rName),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testRecordID(rNameFull, &createdID),
+					resource.TestCheckResourceAttrSet(rNameFull, "id"),
+					func(s *terraform.State) error {
+						nreID := s.RootModule().Resources[rNameFull].Primary.Attributes["id"]
+						nre, err := testClient().Networks.Resources(e2eNetworkID()).Get(context.Background(), nreID)
+						if err != nil {
+							return err
+						}
+
+						if len(nre.Groups) != 0 {
+							return fmt.Errorf("NetworkResource Groups mismatch, expected none, found %#v on management server", nre.Groups)
+						}
+
+						return nil
+					},
+				),
+			},
+			{
+				ResourceName:      rNameFull,
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: testImportIDFrom(rNameFull, "network_id", "id"),
+			},
+			{
+				ResourceName: rName,
+				Config:       testNetworkResourceResource(rName, e2eNetworkID(), `10.90.0.0/24`, fmt.Sprintf("[%q]", e2eGroupNotAllID()), rName),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(rNameFull, "groups.#", "1"),
+					func(s *terraform.State) error {
+						nreID := s.RootModule().Resources[rNameFull].Primary.Attributes["id"]
+						nre, err := testClient().Networks.Resources(e2eNetworkID()).Get(context.Background(), nreID)
+						if err != nil {
+							return err
+						}
+
+						if !sameIDSet(nre.Groups, e2eGroupNotAllID()) {
+							return fmt.Errorf("NetworkResource Groups mismatch, expected [%s], found %#v on management server", e2eGroupNotAllID(), nre.Groups)
+						}
+
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
+func testNetworkResourceResourceNoGroups(rName, networkID, address, name string) string {
+	return fmt.Sprintf(`resource "netbird_network_resource" "%s" {
+	network_id = "%s"
+	address = "%s"
+	name = "%s"
+}`, rName, networkID, address, name)
 }
 
 func testNetworkResourceResource(rName, networkID, address, groups, name string) string {
