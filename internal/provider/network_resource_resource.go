@@ -93,10 +93,11 @@ func (r *NetworkResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Default:             booldefault.StaticBool(true),
 			},
 			"groups": schema.SetAttribute{
-				MarkdownDescription: "Group IDs containing the resource",
-				Required:            true,
+				MarkdownDescription: "Group IDs containing the resource. Omit to keep policy-driven distribution (no groups attached).",
+				Optional:            true,
+				Computed:            true,
 				ElementType:         types.StringType,
-				Validators:          []validator.Set{setvalidator.ValueStringsAre(stringvalidator.LengthAtLeast(1)), setvalidator.SizeAtLeast(1)},
+				Validators:          []validator.Set{setvalidator.ValueStringsAre(stringvalidator.LengthAtLeast(1))},
 			},
 		},
 	}
@@ -130,6 +131,10 @@ func networkResourceAPIToTerraform(ctx context.Context, networkResource *api.Net
 	data.Description = types.StringPointerValue(networkResource.Description)
 	data.Address = types.StringValue(networkResource.Address)
 	data.Enabled = types.BoolValue(networkResource.Enabled)
+	if len(networkResource.Groups) == 0 {
+		data.Groups = types.SetNull(types.StringType)
+		return ret
+	}
 	groups := make([]string, len(networkResource.Groups))
 	for i, k := range networkResource.Groups {
 		groups[i] = k.Id
@@ -154,7 +159,7 @@ func (r *NetworkResource) Create(ctx context.Context, req resource.CreateRequest
 		Description: data.Description.ValueStringPointer(),
 		Address:     data.Address.ValueString(),
 		Enabled:     data.Enabled.ValueBool(),
-		Groups:      stringSetDefault(ctx, data.Groups, []string{}),
+		Groups:      stringSetDefault(ctx, data.Groups, nil),
 	}
 
 	networkResource, err := r.client.Networks.Resources(data.NetworkId.ValueString()).Create(ctx, networkResourceReq)
@@ -224,7 +229,7 @@ func (r *NetworkResource) Update(ctx context.Context, req resource.UpdateRequest
 		Description: data.Description.ValueStringPointer(),
 		Address:     data.Address.ValueString(),
 		Enabled:     data.Enabled.ValueBool(),
-		Groups:      stringSetDefault(ctx, data.Groups, []string{}),
+		Groups:      stringSetDefault(ctx, data.Groups, nil),
 	}
 
 	networkResource, err := r.client.Networks.Resources(data.NetworkId.ValueString()).Update(ctx, data.Id.ValueString(), networkResourceReq)
